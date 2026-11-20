@@ -20,6 +20,16 @@ app.get('/api/db-check', async (req, res) => {
   }
 });
 
+app.get('/api/products', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM products ORDER BY id');
+    res.json(result.rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Something went wrong' });
+  }
+});
+
 app.listen(3000, () => {
   console.log('Server running on http://localhost:3000');
 });
