@@ -30,6 +30,27 @@ app.get('/api/products', async (req, res) => {
   }
 });
 
+app.get('/api/products/:id', async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+
+    if (!Number.isInteger(id) || id < 1) {
+      return res.status(400).json({ error: 'Product id must be a positive whole number' });
+    }
+
+    const result = await pool.query('SELECT * FROM products WHERE id = $1', [id]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Product not found' });
+    }
+
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Something went wrong' });
+  }
+});
+
 app.listen(3000, () => {
   console.log('Server running on http://localhost:3000');
 });
