@@ -8,5 +8,12 @@ const signup = async (req, res, next) => {
     next(err);
   }
 };
-
-module.exports = { signup };
+const login = async (req, res, next) => {
+  try {
+    const result = await authService.login(req.body);
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+};
+module.exports = { signup, login };

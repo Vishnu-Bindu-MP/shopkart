@@ -1,6 +1,7 @@
 const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
 const pool = require('../db');
-const { BadRequestError, ConflictError } = require('../utils/errors');
+const { BadRequestError, ConflictError, UnauthorizedError } = require('../utils/errors');
 
 const signup = async (data) => {
   const { name, email, password } = data || {};
@@ -31,5 +32,33 @@ const signup = async (data) => {
 
   return result.rows[0];
 };
+const login = async (data) => {
+  const { email, password } = data || {};
 
-module.exports = { signup };
+  if (typeof email !== 'string' || email.trim() === '') {
+    throw new BadRequestError('Email is required');
+  }
+  if (typeof password !== 'string' || password === '') {
+    throw new BadRequestError('Password is required');
+  }
+
+  const result = await pool.query(
+    'SELECT id, name, email, password_hash FROM users WHERE email = $1',
+    [email.trim().toLowerCase()]
+  );
+  const user = result.rows[0];
+
+  const passwordMatches = user && (await bcrypt.compare(password, user.password_hash));
+  if (!passwordMatches) {
+    throw new UnauthorizedError('Invalid email or password');
+  }
+
+  const token = jwt.sign(
+    { id: user.id, email: user.email },
+    process.env.JWT_SECRET,
+    { expiresIn: '1d' }
+  );
+
+  return { token, user: { id: user.id, name: user.name, email: user.email } };
+};
+module.exports = { signup, login };
