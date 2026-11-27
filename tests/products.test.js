@@ -1,4 +1,8 @@
 const request = require('supertest');
+const jwt = require('jsonwebtoken');
+
+process.env.JWT_SECRET = 'test-secret';
+const token = jwt.sign({ id: 1, email: 'test@example.com' }, process.env.JWT_SECRET);
 
 jest.mock('../db', () => ({ query: jest.fn() }));
 const pool = require('../db');
@@ -47,15 +51,28 @@ describe('GET /api/products/:id', () => {
 });
 
 describe('POST /api/products', () => {
+  test('returns 401 when no token is sent', async () => {
+    const res = await request(app).post('/api/products').send({ name: 'Mug', price: 199 });
+
+    expect(res.statusCode).toBe(401);
+    expect(res.body.error).toBe('Login required');
+  });
+
   test('returns 400 when the name is missing', async () => {
-    const res = await request(app).post('/api/products').send({ price: 299 });
+    const res = await request(app)
+      .post('/api/products')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ price: 299 });
 
     expect(res.statusCode).toBe(400);
     expect(res.body.error).toBe('Name is required');
   });
 
   test('returns 400 when the price is not above 0', async () => {
-    const res = await request(app).post('/api/products').send({ name: 'Mug', price: -5 });
+    const res = await request(app)
+      .post('/api/products')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ name: 'Mug', price: -5 });
 
     expect(res.statusCode).toBe(400);
     expect(res.body.error).toBe('Price must be a number above 0');
@@ -68,6 +85,7 @@ describe('POST /api/products', () => {
 
     const res = await request(app)
       .post('/api/products')
+      .set('Authorization', `Bearer ${token}`)
       .send({ name: 'Water Bottle', price: 299, stock: 10 });
 
     expect(res.statusCode).toBe(201);
