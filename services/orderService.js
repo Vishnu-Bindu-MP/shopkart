@@ -1,14 +1,21 @@
 const pool = require('../db');
+const { calculateDiscount } = require('./promoService');
 const { BadRequestError, NotFoundError } = require('../utils/errors');
 
-const checkout = async (userId) => {
-  // Borrow ONE phone line and keep it for every step of the transaction
+const round2 = (n) => Math.round(n * 100) / 100;
+
+const checkout = async (userId, promoCodeInput) => {
+  const hasPromo = promoCodeInput !== undefined && promoCodeInput !== null;
+  if (hasPromo && (typeof promoCodeInput !== 'string' || promoCodeInput.trim() === '')) {
+    throw new BadRequestError('Promo code must be a non-empty text');
+  }
+  const promoCode = hasPromo ? promoCodeInput.trim().toUpperCase() : null;
+
   const client = await pool.connect();
 
   try {
     await client.query('BEGIN');
 
-    // Read the cart with product details, and lock those product rows
     const cart = await client.query(
       `SELECT c.product_id, c.quantity, p.name, p.price, p.stock
        FROM cart_items c
@@ -29,16 +36,34 @@ const checkout = async (userId) => {
       }
     }
 
-    const total = cart.rows.reduce((sum, item) => sum + Number(item.price) * item.quantity, 0);
+    const subtotal = round2(
+      cart.rows.reduce((sum, item) => sum + Number(item.price) * item.quantity, 0)
+    );
 
-    // Write the bill
+    let discount = 0;
+    if (promoCode) {
+      const promoResult = await client.query(
+        'SELECT * FROM promo_codes WHERE code = $1 FOR UPDATE',
+        [promoCode]
+      );
+      const promo = promoResult.rows[0];
+
+      discount = calculateDiscount(promo, subtotal);
+
+      await client.query(
+        'UPDATE promo_codes SET current_uses = current_uses + 1 WHERE id = $1',
+        [promo.id]
+      );
+    }
+
+    const total = round2(subtotal - discount);
+
     const order = await client.query(
-      'INSERT INTO orders (user_id, total) VALUES ($1, $2) RETURNING *',
-      [userId, total.toFixed(2)]
+      'INSERT INTO orders (user_id, total, discount, promo_code) VALUES ($1, $2, $3, $4) RETURNING *',
+      [userId, total.toFixed(2), discount.toFixed(2), promoCode]
     );
     const orderId = order.rows[0].id;
 
-    // Write each line, and reduce the stock
     for (const item of cart.rows) {
       await client.query(
         'INSERT INTO order_items (order_id, product_id, quantity, unit_price) VALUES ($1, $2, $3, $4)',
@@ -50,7 +75,6 @@ const checkout = async (userId) => {
       );
     }
 
-    // Clear the tray
     await client.query('DELETE FROM cart_items WHERE user_id = $1', [userId]);
 
     await client.query('COMMIT');
@@ -71,6 +95,7 @@ const checkout = async (userId) => {
     client.release();
   }
 };
+
 const getOrders = async (userId) => {
   const result = await pool.query(
     'SELECT * FROM orders WHERE user_id = $1 ORDER BY created_at DESC, id DESC',
@@ -104,4 +129,5 @@ const getOrderById = async (userId, idInput) => {
 
   return { ...order.rows[0], items: items.rows };
 };
+
 module.exports = { checkout, getOrders, getOrderById };

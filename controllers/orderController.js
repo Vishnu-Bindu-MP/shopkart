@@ -2,7 +2,7 @@ const orderService = require('../services/orderService');
 
 const checkout = async (req, res, next) => {
   try {
-    const order = await orderService.checkout(req.user.id);
+    const order = await orderService.checkout(req.user.id, req.body && req.body.promoCode);
     res.status(201).json(order);
   } catch (err) {
     next(err);

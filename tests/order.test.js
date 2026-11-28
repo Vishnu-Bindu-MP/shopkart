@@ -73,6 +73,96 @@ describe('POST /api/orders (checkout)', () => {
   });
 });
 
+describe('POST /api/orders with a promo code', () => {
+  const cartRows = {
+    rows: [{ product_id: 1, quantity: 3, name: 'Cotton Kurti', price: '399.00', stock: 22 }],
+  };
+
+  const promo = {
+    id: 7,
+    code: 'SAVE10',
+    discount_type: 'percentage',
+    discount_value: '10.00',
+    min_order_amount: '500.00',
+    valid_from: null,
+    valid_to: null,
+    max_uses: null,
+    current_uses: 0,
+    is_deleted: false,
+  };
+
+  test('returns 400 when the promo code is not text', async () => {
+    const res = await request(app).post('/api/orders').set(auth).send({ promoCode: 123 });
+
+    expect(res.statusCode).toBe(400);
+    expect(res.body.error).toBe('Promo code must be a non-empty text');
+    expect(pool.connect).not.toHaveBeenCalled();
+  });
+
+  test('returns 404 and rolls back when the code does not exist', async () => {
+    client.query
+      .mockResolvedValueOnce({})
+      .mockResolvedValueOnce(cartRows)
+      .mockResolvedValueOnce({ rows: [] });
+
+    const res = await request(app).post('/api/orders').set(auth).send({ promoCode: 'NOPE' });
+
+    expect(res.statusCode).toBe(404);
+    expect(res.body.error).toBe('Promo code not found');
+    expect(client.query).toHaveBeenCalledWith('ROLLBACK');
+  });
+
+  test('returns 400 and rolls back when the code has expired', async () => {
+    client.query
+      .mockResolvedValueOnce({})
+      .mockResolvedValueOnce(cartRows)
+      .mockResolvedValueOnce({ rows: [{ ...promo, valid_to: '2020-01-01T00:00:00Z' }] });
+
+    const res = await request(app).post('/api/orders').set(auth).send({ promoCode: 'SAVE10' });
+
+    expect(res.statusCode).toBe(400);
+    expect(res.body.error).toBe('Promo code has expired');
+    expect(client.query).toHaveBeenCalledWith('ROLLBACK');
+  });
+
+  test('returns 400 when the usage limit is reached', async () => {
+    client.query
+      .mockResolvedValueOnce({})
+      .mockResolvedValueOnce(cartRows)
+      .mockResolvedValueOnce({ rows: [{ ...promo, max_uses: 5, current_uses: 5 }] });
+
+    const res = await request(app).post('/api/orders').set(auth).send({ promoCode: 'SAVE10' });
+
+    expect(res.statusCode).toBe(400);
+    expect(res.body.error).toBe('Promo code usage limit reached');
+  });
+
+  test('returns 201, saves the discount and uses up one promo use', async () => {
+    client.query
+      .mockResolvedValueOnce({})
+      .mockResolvedValueOnce(cartRows)
+      .mockResolvedValueOnce({ rows: [promo] })
+      .mockResolvedValueOnce({})
+      .mockResolvedValueOnce({
+        rows: [{ id: 1, user_id: 1, total: '1077.30', discount: '119.70', promo_code: 'SAVE10' }],
+      });
+
+    const res = await request(app).post('/api/orders').set(auth).send({ promoCode: 'save10' });
+
+    expect(res.statusCode).toBe(201);
+    expect(res.body.promo_code).toBe('SAVE10');
+    expect(client.query).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO orders'),
+      [1, '1077.30', '119.70', 'SAVE10']
+    );
+    expect(client.query).toHaveBeenCalledWith(
+      expect.stringContaining('UPDATE promo_codes'),
+      [7]
+    );
+    expect(client.query).toHaveBeenCalledWith('COMMIT');
+  });
+});
+
 describe('GET /api/orders', () => {
   test('returns 200 and the list of orders', async () => {
     pool.query.mockResolvedValueOnce({ rows: [{ id: 1, total: '1197.00' }] });
