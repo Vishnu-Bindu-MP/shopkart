@@ -17,5 +17,21 @@ const addItem = async (req, res, next) => {
     next(err);
   }
 };
+const updateItem = async (req, res, next) => {
+  try {
+    const item = await cartService.updateQuantity(req.user.id, req.params.productId, req.body);
+    res.json(item);
+  } catch (err) {
+    next(err);
+  }
+};
 
-module.exports = { getCart, addItem };
+const removeItem = async (req, res, next) => {
+  try {
+    await cartService.removeFromCart(req.user.id, req.params.productId);
+    res.status(204).send();
+  } catch (err) {
+    next(err);
+  }
+};
+module.exports = { getCart, addItem, updateItem, removeItem };
