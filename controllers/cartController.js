@@ -1,5 +1,5 @@
 const cartService = require('../services/cartService');
-
+const promoService = require('../services/promoService');
 const getCart = async (req, res, next) => {
   try {
     const cart = await cartService.getCart(req.user.id);
@@ -34,4 +34,12 @@ const removeItem = async (req, res, next) => {
     next(err);
   }
 };
-module.exports = { getCart, addItem, updateItem, removeItem };
+const applyPromo = async (req, res, next) => {
+  try {
+    const preview = await promoService.previewPromo(req.user.id, req.body && req.body.code);
+    res.json(preview);
+  } catch (err) {
+    next(err);
+  }
+};
+module.exports = { getCart, addItem, updateItem, removeItem, applyPromo };
