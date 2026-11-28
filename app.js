@@ -1,8 +1,9 @@
 const express = require('express');
 const pool = require('./db');
 const productRoutes = require('./routes/productRoutes');
-const errorHandler = require('./middleware/errorHandler');
 const authRoutes = require('./routes/authRoutes');
+const cartRoutes = require('./routes/cartRoutes');
+const errorHandler = require('./middleware/errorHandler');
 
 const app = express();
 
@@ -28,6 +29,7 @@ app.get('/api/db-check', async (req, res) => {
 
 app.use('/api/products', productRoutes);
 app.use('/api/auth', authRoutes);
+app.use('/api/cart', cartRoutes);
 app.use(errorHandler);
 
 module.exports = app;
